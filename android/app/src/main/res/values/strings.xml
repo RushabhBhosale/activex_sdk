@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ActiveX</string>
+    <string name="title_activity_main">ActiveX</string>
+    <string name="package_name">com.iosx.activex</string>
+    <string name="custom_url_scheme">com.iosx.activex</string>
+</resources>

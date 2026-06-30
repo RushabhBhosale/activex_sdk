@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="@android:color/white">
+
+    <!-- Delete Button -->
+    <!-- <Button
+        android:id="@+id/btn_del"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Delete"
+        android:textColor="@android:color/white"  
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/button_background" 
+        android:textSize="16sp"  
+        android:fontFamily="sans-serif-medium" /> -->
+
+    <!-- Back Button -->
+    <ImageButton
+        android:id="@+id/back_button"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:src="@drawable/arrow1"
+        android:background="?attr/selectableItemBackground"
+        android:contentDescription="Back"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:scaleType="centerInside"
+        android:adjustViewBounds="true" />
+
+    <!-- Title "Weigh Scale" -->
+    <TextView
+        android:id="@+id/scan_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Weigh Scale"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#212121"
+        android:layout_marginLeft="50dp"
+        android:layout_alignParentTop="true" />
+
+    <View
+        android:id="@+id/header_border"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_below="@id/scan_title"
+        android:layout_marginTop="16dp"
+        android:layout_alignParentStart="true"/>
+
+    <!-- Scan again link in center -->
+    <TextView
+        android:id="@+id/scan_again"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Please step on the device to start BCA Analysis"
+        android:textSize="18sp"
+        android:textColor="@android:color/holo_blue_dark"
+        android:clickable="true"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@id/header_border"
+        android:layout_centerVertical="true" /> <!-- Center vertically within the layout -->
+
+    <!-- ListView for devices -->
+    <ListView
+        android:id="@+id/device_list_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/scan_again"
+        android:layout_marginTop="36dp" />
+
+</RelativeLayout>
