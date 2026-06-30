@@ -1,4 +1,4 @@
-apply plugin: 'com.android.application'
+apply plugin: 'com.android.library'
 
 android {
   namespace "com.iosx.activex"
@@ -13,21 +13,9 @@ android {
     }
   }
 
-  signingConfigs {
-    debug {
-      storeFile file('debug.keystore')
-      storePassword 'password'
-      keyAlias 'key0'
-      keyPassword 'password'
-    }
-  }
-
   defaultConfig {
-    applicationId "com.iosx.activex"
     minSdkVersion rootProject.ext.minSdkVersion
     targetSdkVersion rootProject.ext.targetSdkVersion
-    versionCode 31
-    versionName "31"
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     multiDexEnabled true
 
@@ -46,19 +34,6 @@ android {
       minifyEnabled false
       shrinkResources false
       proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-      signingConfig signingConfigs.debug
-    }
-  }
-
-  bundle {
-    density {
-      enableSplit true
-    }
-    abi {
-      enableSplit true
-    }
-    language {
-      enableSplit true
     }
   }
 
@@ -76,10 +51,6 @@ android {
     exclude 'META-INF/ppcalculatekit_debug.kotlin_module'
     exclude 'META-INF/ppbluetoothkit_debug.kotlin_module'
 
-//    exclude "lib/arm64-v8a/libICBleProtocol.so"
-//    exclude "lib/arm64-v8a/libICLogger.so"
-//    exclude "lib/arm64-v8a/libICBodyFatAlgorithms.so"
-
     pickFirst 'com/icomon/icbodyfatalgorithms/BuildConfig.class'
   }
 
@@ -92,7 +63,7 @@ android {
 
 repositories {
   flatDir {
-    dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    dirs 'libs'
   }
 }
 
@@ -104,12 +75,6 @@ dependencies {
   implementation "androidx.constraintlayout:constraintlayout:2.1.4"
   implementation "androidx.localbroadcastmanager:localbroadcastmanager:1.0.0"
 
-  implementation(name: "ICDeviceManager", ext: "aar")
-//  implementation(name: "ppbasekit-4.6.8", ext: "aar")
-//  implementation(name: "ppbasiccalculatekit-1.1.0", ext: "aar")
-//  implementation(name: "ppcalculatekit-4.6.8", ext: "aar")
-//  implementation(name: "ppbluetoothkit-4.6.8", ext: "aar")
-  // implementation(name: "ppscale-3.1.5-20260422.075910-1", ext: "aar")
 
  api 'com.lefu.ppbasekit:ppbasekit:4.6.14'
 //Bluetooth library
@@ -121,9 +86,6 @@ dependencies {
 //Body fat calculation library
  api 'com.lefu.ppbasiccalculatekit:ppbasiccalculatekit:1.1.1'
 
-  implementation project(':capacitor-android')
-  implementation project(':capacitor-cordova-android-plugins')
-
   implementation 'com.google.code.gson:gson:2.8.9'
 
   testImplementation "junit:junit:$junitVersion"
@@ -133,6 +95,10 @@ dependencies {
 
 configurations.all {
   resolutionStrategy {
+    force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+    force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+
     eachDependency { details ->
       if (details.requested.group == 'com.icomon' && details.requested.name == 'icbodyfatalgorithms') {
         details.useVersion 'none'
@@ -140,8 +106,6 @@ configurations.all {
     }
   }
 }
-
-apply from: 'capacitor.build.gradle'
 
 try {
   def servicesJSON = file('google-services.json')

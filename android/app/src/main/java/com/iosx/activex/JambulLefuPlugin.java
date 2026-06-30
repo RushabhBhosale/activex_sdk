@@ -1,7 +1,5 @@
 package com.iosx.activex;
 
-import static com.iosx.activex.ICPlugin.notifyDeviceInfo;
-
 import android.app.Activity;
 import android.content.Context;
 import android.util.Log;
@@ -9,11 +7,6 @@ import android.view.WindowManager;
 
 import androidx.annotation.Nullable;
 
-import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
-import com.getcapacitor.PluginCall;
-import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.CapacitorPlugin;
 import com.lefu.ppbase.PPBodyBaseModel;
 import com.lefu.ppbase.PPDeviceModel;
 import com.lefu.ppbase.PPScaleDefine;
@@ -27,12 +20,12 @@ import com.lefu.ppcalculate.PPBodyFatModel;
 import com.lefu.ppcalculate.PPCalculateKit;
 import com.lefu.ppcalculate.vo.PPBodyDetailModel;
 import com.peng.ppscale.PPBluetoothKit;
-import com.peng.ppscale.business.ble.listener.PPDataChangeListener;
 import com.peng.ppscale.business.ble.listener.PPBleStateInterface;
+import com.peng.ppscale.business.ble.listener.PPDataChangeListener;
+import com.peng.ppscale.business.ble.listener.PPSearchDeviceInfoInterface;
 import com.peng.ppscale.business.state.PPBleSwitchState;
 import com.peng.ppscale.business.state.PPBleWorkState;
 import com.peng.ppscale.device.PeripheralJambul.PPBlutoothPeripheralJambulController;
-import com.peng.ppscale.business.ble.listener.PPSearchDeviceInfoInterface;
 import com.peng.ppscale.search.PPSearchManager;
 
 import java.lang.reflect.Field;
@@ -42,11 +35,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@CapacitorPlugin(name = "JambulLefuPlugin")
-public class JambulLefuPlugin extends Plugin {
-
+public class JambulLefuPlugin {
   private static final String TAG = "JambulLefuPlugin";
 
+  private final Context context;
+  private LefuEventListener eventListener;
   private PPSearchManager ppScale;
   private final List<PPDeviceModel> foundDevices = new ArrayList<>();
   private PPBlutoothPeripheralJambulController jambulController;
@@ -62,34 +55,61 @@ public class JambulLefuPlugin extends Plugin {
 
   private PPDataChangeListener jambulDataChangeListener = null;
 
-  @PluginMethod
-  public void initializeSDK(PluginCall call) {
+  public JambulLefuPlugin(Context context) {
+    this.context = context.getApplicationContext();
+  }
+
+  public void setEventListener(LefuEventListener eventListener) {
+    this.eventListener = eventListener;
+  }
+
+  private void notifyListeners(String eventName, ResultData data) {
+    if (eventListener != null) eventListener.onEvent(eventName, data);
+  }
+
+  private void notifyDeviceInfo(ResultData data) {
+    if (eventListener != null) eventListener.onDeviceInfo(data);
+  }
+
+  private void resolve(ResultCallback callback) {
+    if (callback != null) callback.onSuccess(new ResultData());
+  }
+
+  private void resolve(ResultCallback callback, ResultData data) {
+    if (callback != null) callback.onSuccess(data);
+  }
+
+  private void reject(ResultCallback callback, String message) {
+    reject(callback, message, null);
+  }
+
+  private void reject(ResultCallback callback, String message, Throwable error) {
+    if (callback != null) callback.onError(message, error);
+  }
+
+  public void initializeSDK(ResultCallback callback) {
     String appKey = "lefu0c091646522ebd05";
     String appSecret = "7MIs7ILShqp84endnTlTJMFG59iVB0BuejBWlhgq7+E=";
 
     Log.d(TAG, "Initializing SDK...");
-
-    Context context = getContext();
     PPBluetoothKit.INSTANCE.initSdk(context, appKey, appSecret, "lefu.config");
     PPCalculateKit.INSTANCE.initSdk(context);
-
     Log.d(TAG, "SDK initialized");
-    call.resolve();
+    resolve(callback);
   }
 
   private void ensureJambulListener() {
     if (jambulDataChangeListener != null) return;
 
     jambulDataChangeListener = new PPDataChangeListener() {
-
       @Override
       public void monitorProcessData(@Nullable PPBodyBaseModel body, @Nullable PPDeviceModel dev) {
         if (body == null) return;
 
-        JSObject evt = new JSObject();
-        evt.put("event", "measurementStarted");
-        evt.put("weight", body.getWeight());
-        evt.put("weightKg", body.getPpWeightKg());
+        ResultData evt = new ResultData();
+        evt.putValue("event", "measurementStarted");
+        evt.putValue("weight", body.getWeight());
+        evt.putValue("weightKg", body.getPpWeightKg());
         notifyListeners("measurementUpdate", evt);
 
         Log.d(TAG, "Jambul process weightKg=" + body.getPpWeightKg());
@@ -101,36 +121,33 @@ public class JambulLefuPlugin extends Plugin {
 
         Log.d(TAG, "Jambul lock received");
 
-        JSObject measurementComplete = new JSObject();
-        measurementComplete.put("event", "measurementComplete");
-        measurementComplete.put("weightKg", bodyBaseModel.getPpWeightKg());
+        ResultData measurementComplete = new ResultData();
+        measurementComplete.putValue("event", "measurementComplete");
+        measurementComplete.putValue("weightKg", bodyBaseModel.getPpWeightKg());
         notifyListeners("measurementUpdate", measurementComplete);
-
-        // NOTE: This listener does NOT resolve PluginCall.
-        // Actual "fields" result is returned by one-shot listener inside startMeasurement.
       }
 
       @Override
       public void monitorDataFail(@Nullable PPBodyBaseModel body, @Nullable PPDeviceModel dev) {
-        JSObject evt = new JSObject();
-        evt.put("event", "dataFailure");
-        evt.put("message", "Jambul data fail");
+        ResultData evt = new ResultData();
+        evt.putValue("event", "dataFailure");
+        evt.putValue("message", "Jambul data fail");
         notifyListeners("measurementUpdate", evt);
         Log.e(TAG, "Jambul data fail");
       }
 
       @Override
       public void monitorOverWeight() {
-        JSObject evt = new JSObject();
-        evt.put("event", "overWeight");
+        ResultData evt = new ResultData();
+        evt.putValue("event", "overWeight");
         notifyListeners("measurementUpdate", evt);
       }
 
-      @Override public void onImpedanceFatting() { }
-      @Override public void onDeviceShutdown() { }
-      @Override public void monitorScaleState(@Nullable PPScaleState state) { }
-      @Override public void monitorLockDataByCalculateInScale(@Nullable PPBodyFatInScaleVo vo) { }
-      @Override public void monitorFootLenMeasure(PPScaleFootState state, int i) { }
+      @Override public void onImpedanceFatting() {}
+      @Override public void onDeviceShutdown() {}
+      @Override public void monitorScaleState(@Nullable PPScaleState state) {}
+      @Override public void monitorLockDataByCalculateInScale(@Nullable PPBodyFatInScaleVo vo) {}
+      @Override public void monitorFootLenMeasure(PPScaleFootState state, int i) {}
     };
   }
 
@@ -160,17 +177,15 @@ public class JambulLefuPlugin extends Plugin {
     isJambulSessionRunning = true;
     selectedDevice = model;
 
-    JSObject evt = new JSObject();
-    evt.put("status", "session_started");
-    evt.put("deviceName", model.getDeviceName());
-    evt.put("deviceAddress", model.getDeviceMac());
+    ResultData evt = new ResultData();
+    evt.putValue("status", "session_started");
+    evt.putValue("deviceName", model.getDeviceName());
+    evt.putValue("deviceAddress", model.getDeviceMac());
     notifyListeners("deviceConnectionChanged", evt);
-
     notifyDeviceInfo(evt);
   }
 
-  @PluginMethod
-  public void startScan(PluginCall call) {
+  public void startScan(ResultCallback callback) {
     if (ppScale == null) {
       ppScale = PPSearchManager.getInstance();
     }
@@ -191,17 +206,16 @@ public class JambulLefuPlugin extends Plugin {
         calculateType = String.valueOf(model.getDeviceCalcuteType());
         Log.d(TAG, "Found device: " + model.toString());
 
-        // Same behavior as Lefu: auto start your session/search for that device.
         startJambulSession(model);
 
-        JSObject result = new JSObject();
-        result.put("connected", true);
-        result.put("deviceName", model.getDeviceName());
-        result.put("deviceAddress", model.getDeviceMac());
+        ResultData result = new ResultData();
+        result.putValue("connected", true);
+        result.putValue("deviceName", model.getDeviceName());
+        result.putValue("deviceAddress", model.getDeviceMac());
         notifyListeners("lefuDeviceInfo", result);
 
         if (resolved.compareAndSet(false, true)) {
-          call.resolve(result);
+          resolve(callback, result);
         }
       }
     }, new PPBleStateInterface() {
@@ -218,27 +232,24 @@ public class JambulLefuPlugin extends Plugin {
       }
     });
 
-    // match Lefu style: return immediate "scanning started" if nothing yet
-    JSObject result = new JSObject();
-    result.put("connected", false);
-    result.put("message", "Scanning started. Waiting for devices...");
+    ResultData result = new ResultData();
+    result.putValue("connected", false);
+    result.putValue("message", "Scanning started. Waiting for devices...");
     notifyListeners("lefuDeviceInfo", result);
     if (resolved.compareAndSet(false, true)) {
-      call.resolve(result);
+      resolve(callback, result);
     }
   }
 
-  @PluginMethod
-  public void stopScan(PluginCall call) {
+  public void stopScan(ResultCallback callback) {
     if (ppScale != null) {
       try { ppScale.stopSearch(); } catch (Exception ignore) {}
       Log.d(TAG, "Scan stopped");
     }
-    call.resolve();
+    resolve(callback);
   }
 
-  @PluginMethod
-  public void stopJambul(PluginCall call) {
+  public void stopJambul(ResultCallback callback) {
     if (jambulController != null) {
       try { jambulController.registDataChangeListener(null); } catch (Exception ignore) {}
       try { jambulController.stopSeach(); } catch (Exception ignore) {}
@@ -247,57 +258,54 @@ public class JambulLefuPlugin extends Plugin {
     isJambulSessionRunning = false;
     selectedDevice = null;
 
-    JSObject evt = new JSObject();
-    evt.put("status", "session_stopped");
+    ResultData evt = new ResultData();
+    evt.putValue("status", "session_stopped");
     notifyListeners("deviceConnectionChanged", evt);
 
-    call.resolve();
+    resolve(callback);
   }
 
-  @PluginMethod
-  public void getDevices(PluginCall call) {
+  public void getDevices(ResultCallback callback) {
     if (foundDevices.isEmpty()) {
-      call.reject("No devices found.");
+      reject(callback, "No devices found.");
       return;
     }
 
-    JSObject result = new JSObject();
-    List<JSObject> list = new ArrayList<>();
+    ResultData result = new ResultData();
+    List<ResultData> list = new ArrayList<>();
 
     for (PPDeviceModel d : foundDevices) {
-      JSObject o = new JSObject();
-      o.put("deviceName", d.getDeviceName());
-      o.put("deviceAddress", d.getDeviceMac());
+      ResultData o = new ResultData();
+      o.putValue("deviceName", d.getDeviceName());
+      o.putValue("deviceAddress", d.getDeviceMac());
       list.add(o);
     }
 
-    result.put("devices", list);
-    call.resolve(result);
+    result.putValue("devices", list);
+    resolve(callback, result);
   }
 
-  @PluginMethod
-  public void checkDeviceConnection(PluginCall call) {
-    JSObject result = new JSObject();
-    result.put("isConnected", isJambulSessionRunning);
+  public void checkDeviceConnection(ResultCallback callback) {
+    ResultData result = new ResultData();
+    result.putValue("isConnected", isJambulSessionRunning);
 
     if (isJambulSessionRunning && selectedDevice != null) {
-      result.put("deviceName", selectedDevice.getDeviceName());
-      result.put("deviceAddress", selectedDevice.getDeviceMac());
+      result.putValue("deviceName", selectedDevice.getDeviceName());
+      result.putValue("deviceAddress", selectedDevice.getDeviceMac());
     }
 
-    call.resolve(result);
+    resolve(callback, result);
   }
 
-  @PluginMethod
-  public void syncUserInfo(PluginCall call) {
-    if (!call.hasOption("age") || !call.hasOption("height") || !call.hasOption("sex")) {
-      call.reject("Missing required user information: age, height, or sex.");
+  public void syncUserInfo(Integer age, Double height, String sexValue, ResultCallback callback) {
+    if (age == null || height == null || sexValue == null) {
+      reject(callback, "Missing required user information: age, height, or sex.");
       return;
     }
 
-    age = call.getInt("age");
-    height = call.getDouble("height");
-    gender = call.getString("sex").toLowerCase();
+    this.age = age;
+    this.height = height;
+    gender = sexValue.toLowerCase();
 
     PPUserGender sex = "male".equals(gender)
       ? PPUserGender.PPUserGenderMale
@@ -305,23 +313,15 @@ public class JambulLefuPlugin extends Plugin {
 
     userModel = new PPUserModel.Builder()
       .setSex(sex)
-      .setHeight(height.intValue())
-      .setAge(age)
+      .setHeight(this.height.intValue())
+      .setAge(this.age)
       .build();
 
-    Log.d(TAG, "User info synced: age=" + age + " height=" + height + " sex=" + gender);
-    call.resolve();
+    Log.d(TAG, "User info synced: age=" + this.age + " height=" + this.height + " sex=" + gender);
+    resolve(callback);
   }
 
-  /**
-   * IMPORTANT:
-   * - No setKeepAlive
-   * - No pendingMeasurementCall
-   * - Same behavior as your LefuPlugin: resolve(call) when lock data arrives
-   */
-  @PluginMethod
-  public void startMeasurement(PluginCall call) {
-    Activity activity = getActivity();
+  public void startMeasurement(Activity activity, ResultCallback callback) {
     if (activity != null) {
       activity.runOnUiThread(() ->
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -329,24 +329,23 @@ public class JambulLefuPlugin extends Plugin {
     }
 
     if (!isJambulSessionRunning || selectedDevice == null) {
-      call.reject("No Jambul session running. Start scan first.");
+      reject(callback, "No Jambul session running. Start scan first.");
       return;
     }
 
     if (userModel == null) {
-      call.reject("User info missing. Call syncUserInfo first.");
+      reject(callback, "User info missing. Call syncUserInfo first.");
       return;
     }
 
     if (jambulController == null) {
-      call.reject("Jambul controller not initialized.");
+      reject(callback, "Jambul controller not initialized.");
       return;
     }
 
     final AtomicBoolean resolved = new AtomicBoolean(false);
 
     PPDataChangeListener oneShotListener = new PPDataChangeListener() {
-
       @Override
       public void monitorProcessData(@Nullable PPBodyBaseModel body, @Nullable PPDeviceModel dev) {
         if (jambulDataChangeListener != null) {
@@ -356,9 +355,8 @@ public class JambulLefuPlugin extends Plugin {
 
       @Override
       public void onImpedanceFatting() {
-        // if you want to mirror Lefu events, you can emit it here
-        JSObject evt = new JSObject();
-        evt.put("event", "bodyFatMeasurementStarted");
+        ResultData evt = new ResultData();
+        evt.putValue("event", "bodyFatMeasurementStarted");
         notifyListeners("measurementUpdate", evt);
 
         if (jambulDataChangeListener != null) {
@@ -379,7 +377,7 @@ public class JambulLefuPlugin extends Plugin {
           PPScaleDefine.PPDeviceCalcuteType ct;
           try {
             ct = PPScaleDefine.PPDeviceCalcuteType.valueOf(calculateType);
-            Log.d("Clla", "Calculate Type"+ct);
+            Log.d("Clla", "Calculate Type" + ct);
           } catch (Exception e) {
             ct = deviceModel.getDeviceCalcuteType();
           }
@@ -400,7 +398,7 @@ public class JambulLefuPlugin extends Plugin {
 
           PPBodyFatModel fatModel = new PPBodyFatModel(bodyBaseModel, bodyBaseModel);
 
-          JSObject fieldsData = new JSObject();
+          ResultData fieldsData = new ResultData();
           Field[] fields = fatModel.getClass().getDeclaredFields();
           for (Field field : fields) {
             try {
@@ -408,25 +406,22 @@ public class JambulLefuPlugin extends Plugin {
               Object v = field.get(fatModel);
 
               if (v instanceof Number) {
-                fieldsData.put(field.getName(), (Number) v);
+                fieldsData.putValue(field.getName(), (Number) v);
               } else if (v instanceof Boolean) {
-                fieldsData.put(field.getName(), (Boolean) v);
+                fieldsData.putValue(field.getName(), (Boolean) v);
               } else {
-                fieldsData.put(field.getName(), v != null ? String.valueOf(v) : "N/A");
+                fieldsData.putValue(field.getName(), v != null ? String.valueOf(v) : "N/A");
               }
             } catch (IllegalAccessException ignore) {}
           }
 
-          JSObject result = new JSObject();
-          result.put("fields", fieldsData);
+          ResultData result = new ResultData();
+          result.putValue("fields", fieldsData);
 
-          // Optional debug
           PPBodyDetailModel detail = new PPBodyDetailModel(fatModel);
           Log.d(TAG, "Body detail: " + detail.toString());
 
           resolved.set(true);
-
-          // restore default listener for the running session
           ensureJambulListener();
           jambulController.registDataChangeListener(jambulDataChangeListener);
 
@@ -436,13 +431,11 @@ public class JambulLefuPlugin extends Plugin {
             );
           }
 
-          call.resolve(result);
-
+          resolve(callback, result);
         } catch (Exception e) {
           Log.e(TAG, "Calculation failed", e);
 
           resolved.set(true);
-
           ensureJambulListener();
           jambulController.registDataChangeListener(jambulDataChangeListener);
 
@@ -452,7 +445,7 @@ public class JambulLefuPlugin extends Plugin {
             );
           }
 
-          call.reject("Calculation failed: " + e.getMessage());
+          reject(callback, "Calculation failed: " + e.getMessage(), e);
         }
       }
 
@@ -474,7 +467,7 @@ public class JambulLefuPlugin extends Plugin {
           );
         }
 
-        call.reject("Jambul data fail");
+        reject(callback, "Jambul data fail");
       }
 
       @Override public void monitorOverWeight() {
@@ -498,19 +491,14 @@ public class JambulLefuPlugin extends Plugin {
       }
     };
 
-    // Swap listener for this measurement only
     jambulController.registDataChangeListener(oneShotListener);
 
-    JSObject evt = new JSObject();
-    evt.put("event", "measurementStarted");
+    ResultData evt = new ResultData();
+    evt.putValue("event", "measurementStarted");
     notifyListeners("measurementUpdate", evt);
-
-    // Do NOT resolve here. Resolve from lock.
-    // This matches your Lefu behavior: return only when fields are ready.
   }
 
-  @PluginMethod
-  public void removeConnectedDevice(PluginCall call) {
+  public void removeConnectedDevice(ResultCallback callback) {
     try {
       Log.d(TAG, "removeConnectedDevice called");
 
@@ -527,20 +515,20 @@ public class JambulLefuPlugin extends Plugin {
       selectedDevice = null;
       calculateType = "";
 
-      JSObject evt = new JSObject();
-      evt.put("status", "session_stopped");
+      ResultData evt = new ResultData();
+      evt.putValue("status", "session_stopped");
       notifyListeners("deviceConnectionChanged", evt);
 
-      JSObject res = new JSObject();
-      res.put("ok", true);
-      res.put("message", "Session stopped");
-      call.resolve(res);
+      ResultData res = new ResultData();
+      res.putValue("ok", true);
+      res.putValue("message", "Session stopped");
+      resolve(callback, res);
     } catch (Exception e) {
       Log.e(TAG, "removeConnectedDevice failed (ignored)", e);
-      JSObject res = new JSObject();
-      res.put("ok", true);
-      res.put("warning", String.valueOf(e.getMessage()));
-      call.resolve(res);
+      ResultData res = new ResultData();
+      res.putValue("ok", true);
+      res.putValue("warning", String.valueOf(e.getMessage()));
+      resolve(callback, res);
     }
   }
 }
