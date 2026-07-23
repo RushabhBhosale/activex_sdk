@@ -21,13 +21,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class MeasurementValidationClient {
-  private static final String TAG = "MeasurementValidation";
+  private static final String TAG = "SdkDataPost";
   private static final String API_URL = "http://dev-api.myactivex.com/external/SdkDataPost";
   private static final String API_KEY_HEADER = "x-api-key";
   private static final int CONNECT_TIMEOUT_MS = 15000;
   private static final int READ_TIMEOUT_MS = 15000;
   private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool();
-  private static final boolean LOG_REQUEST_DETAILS = true;
   private static final int LOG_CHUNK_SIZE = 3000;
 
   interface Callback {
@@ -55,15 +54,10 @@ final class MeasurementValidationClient {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty(API_KEY_HEADER, input.getActiveXSecret());
 
-        String requestBodyString = buildPayload(input, measurement).toString();
-        if (LOG_REQUEST_DETAILS) {
-          Log.d(TAG, "Request URL: " + API_URL);
-          Log.d(TAG, "Request method: POST");
-          Log.d(TAG, "Request headers: {Content-Type=application/json; charset=UTF-8, "
-            + "Accept=application/json, "
-            + API_KEY_HEADER + "=" + input.getActiveXSecret() + "}");
-          logInChunks("Request payload", requestBodyString);
-        }
+        JSONObject requestPayload = buildPayload(input, measurement);
+        String requestBodyString = requestPayload.toString();
+        Log.d(TAG, "POST payload root field count: " + requestPayload.length());
+        logInChunks("POST payload", requestBodyString);
 
         byte[] requestBody = requestBodyString.getBytes(StandardCharsets.UTF_8);
         connection.setFixedLengthStreamingMode(requestBody.length);
@@ -73,10 +67,8 @@ final class MeasurementValidationClient {
 
         int responseCode = connection.getResponseCode();
         String responseBody = readResponse(connection, responseCode);
-        if (LOG_REQUEST_DETAILS) {
-          Log.d(TAG, "Response: HTTP " + responseCode);
-          logInChunks("Response body", responseBody);
-        }
+        Log.d(TAG, "POST response: HTTP " + responseCode);
+        logInChunks("POST response body", responseBody);
         if (responseCode >= 200 && responseCode < 300 && isAllowed(responseBody)) {
           callback.onAuthorized();
         } else {
@@ -117,12 +109,15 @@ final class MeasurementValidationClient {
         Object value = entry.getValue();
 
         // The API expects every calculated device field directly at the root.
-        if ("fields".equals(key) && value instanceof Map<?, ?>) {
+        if ("fields".equals(key)) {
+          if (!(value instanceof Map<?, ?>)) {
+            throw new JSONException("Measurement fields must be a map.");
+          }
           for (Map.Entry<?, ?> field : ((Map<?, ?>) value).entrySet()) {
-            payload.put(String.valueOf(field.getKey()), toJsonValue(field.getValue()));
+            putRootValue(payload, String.valueOf(field.getKey()), field.getValue());
           }
         } else {
-          payload.put(key, toJsonValue(value));
+          putRootValue(payload, key, value);
         }
       }
     }
@@ -132,6 +127,12 @@ final class MeasurementValidationClient {
     payload.put("Date", input.getDate());
     payload.put("PatientName", input.getPatientName());
     return payload;
+  }
+
+  private static void putRootValue(JSONObject payload, String key, Object value)
+    throws JSONException {
+    if (key == null || key.trim().isEmpty()) return;
+    payload.put(key, toJsonValue(value));
   }
 
   private static Object toJsonValue(Object value) throws JSONException {

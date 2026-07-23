@@ -2,16 +2,50 @@ plugins {
   id 'com.android.application' version '8.5.2'
 }
 
+def demoReleaseStoreFile = findProperty('demoReleaseStoreFile') ?: System.getenv('DEMO_RELEASE_STORE_FILE')
+def demoReleaseStorePassword = findProperty('demoReleaseStorePassword') ?: System.getenv('DEMO_RELEASE_STORE_PASSWORD')
+def demoReleaseKeyAlias = findProperty('demoReleaseKeyAlias') ?: System.getenv('DEMO_RELEASE_KEY_ALIAS')
+def demoReleaseKeyPassword = findProperty('demoReleaseKeyPassword') ?: System.getenv('DEMO_RELEASE_KEY_PASSWORD')
+def hasDemoReleaseSigning = [
+  demoReleaseStoreFile,
+  demoReleaseStorePassword,
+  demoReleaseKeyAlias,
+  demoReleaseKeyPassword
+].every { it }
+
 android {
   namespace "com.iosx.activex"
   compileSdk 35
 
+  signingConfigs {
+    if (hasDemoReleaseSigning) {
+      demoRelease {
+        storeFile file(demoReleaseStoreFile)
+        storePassword demoReleaseStorePassword
+        keyAlias demoReleaseKeyAlias
+        keyPassword demoReleaseKeyPassword
+      }
+    }
+  }
+
   defaultConfig {
-    applicationId "com.iosx.activex"
+    // Keep the standalone demo separate from the SDK's main app. They use
+    // different signing keys, so sharing an application ID makes Android
+    // reject installs/updates on devices that already have the main app.
+    applicationId "com.iosx.activex.demo"
     minSdk 22
     targetSdk 35
     versionCode 1
     versionName "1.0"
+  }
+
+  buildTypes {
+    release {
+      // The demo must produce an installable APK by default. A supplied
+      // keystore is preferred; otherwise use the Android Studio debug key
+      // so release can update a locally installed debug demo.
+      signingConfig hasDemoReleaseSigning ? signingConfigs.demoRelease : signingConfigs.debug
+    }
   }
 }
 
@@ -24,12 +58,6 @@ dependencies {
   implementation "androidx.constraintlayout:constraintlayout:2.1.4"
   implementation "androidx.localbroadcastmanager:localbroadcastmanager:1.0.0"
 
-  implementation 'com.lefu.ppbasekit:ppbasekit:4.6.14'
-  implementation 'com.lefu:bluetoothkit:1.5.5'
-  implementation 'com.lefu.ppbluetoothkit:ppbluetoothkit:4.6.14'
-  implementation 'com.lefu.ppcalculatekit:ppcalculatekit:4.6.14'
-  implementation 'com.lefu.ppbasiccalculatekit:ppbasiccalculatekit:1.1.1'
-  implementation 'com.google.code.gson:gson:2.8.9'
 }
 
 configurations.all {

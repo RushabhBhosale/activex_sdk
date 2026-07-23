@@ -18,7 +18,6 @@ import com.lefu.ppbase.vo.PPUserGender;
 import com.lefu.ppbase.vo.PPUserModel;
 import com.lefu.ppcalculate.PPBodyFatModel;
 import com.lefu.ppcalculate.PPCalculateKit;
-import com.lefu.ppcalculate.vo.PPBodyDetailModel;
 import com.peng.ppscale.PPBluetoothKit;
 import com.peng.ppscale.business.ble.listener.PPBleSendResultCallBack;
 import com.peng.ppscale.business.ble.listener.PPBleStateInterface;
@@ -57,6 +56,46 @@ public class LefuPlugin {
 
   public LefuPlugin(Context context) {
     this.context = context.getApplicationContext();
+  }
+
+  private void logMeasurementValues(PPBodyBaseModel body, PPBodyFatModel calculated) {
+    Log.d(TAG, "Measurement values: weightKg=" + calculated.getPpWeightKg()
+      + ", impedance=" + body.getImpedance()
+      + ", impedance100=" + body.getPpImpedance100DeCode()
+      + ", twoLegImpedance=" + body.getZTwoLegsDeCode()
+      + ", bmi=" + calculated.getPpBMI()
+      + ", bmr=" + calculated.getPpBMR()
+      + ", bodyFat=" + calculated.getPpFat()
+      + ", bodyFatKg=" + calculated.getPpBodyfatKg()
+      + ", musclePercentage=" + calculated.getPpMusclePercentage()
+      + ", muscleKg=" + calculated.getPpMuscleKg()
+      + ", waterPercentage=" + calculated.getPpWaterPercentage()
+      + ", visceralFat=" + calculated.getPpVisceralFat()
+      + ", heartRate=" + calculated.getPpHeartRate());
+
+    Log.d(TAG, "Segment impedance 100kHz: leftArm=" + body.getZ100KhzLeftArmDeCode()
+      + ", rightArm=" + body.getZ100KhzRightArmDeCode()
+      + ", leftLeg=" + body.getZ100KhzLeftLegDeCode()
+      + ", rightLeg=" + body.getZ100KhzRightLegDeCode()
+      + ", trunk=" + body.getZ100KhzTrunkDeCode());
+
+    Log.d(TAG, "Segment impedance 20kHz: leftArm=" + body.getZ20KhzLeftArmDeCode()
+      + ", rightArm=" + body.getZ20KhzRightArmDeCode()
+      + ", leftLeg=" + body.getZ20KhzLeftLegDeCode()
+      + ", rightLeg=" + body.getZ20KhzRightLegDeCode()
+      + ", trunk=" + body.getZ20KhzTrunkDeCode());
+
+    Log.d(TAG, "Segment body fat kg: leftArm=" + calculated.getPpBodyFatKgLeftArm()
+      + ", rightArm=" + calculated.getPpBodyFatKgRightArm()
+      + ", leftLeg=" + calculated.getPpBodyFatKgLeftLeg()
+      + ", rightLeg=" + calculated.getPpBodyFatKgRightLeg()
+      + ", trunk=" + calculated.getPpBodyFatKgTrunk());
+
+    Log.d(TAG, "Segment muscle kg: leftArm=" + calculated.getPpMuscleKgLeftArm()
+      + ", rightArm=" + calculated.getPpMuscleKgRightArm()
+      + ", leftLeg=" + calculated.getPpMuscleKgLeftLeg()
+      + ", rightLeg=" + calculated.getPpMuscleKgRightLeg()
+      + ", trunk=" + calculated.getPpMuscleKgTrunk());
   }
 
   public void setEventListener(LefuEventListener eventListener) {
@@ -365,7 +404,7 @@ public class LefuPlugin {
 
         @Override
         public void onImpedanceFatting() {
-          Log.d(TAG, "Impedance fatting detected.");
+          Log.d(TAG, "Impedance measurement started.");
           ResultData bodyFatMeasurementStarted = new ResultData();
           bodyFatMeasurementStarted.putValue("event", "bodyFatMeasurementStarted");
           notifyListeners("measurementUpdate", bodyFatMeasurementStarted);
@@ -379,12 +418,9 @@ public class LefuPlugin {
         @Override
         public void monitorScaleState(@Nullable PPScaleState ppScaleState) {
           if (ppScaleState != null) {
-            Log.d(TAG, "Scale state monitored: " + ppScaleState.toString());
             ResultData stateUpdate = new ResultData();
             stateUpdate.putValue("event", "scaleState");
             stateUpdate.putValue("state", ppScaleState.toString());
-          } else {
-            Log.d(TAG, "No scale state data received.");
           }
         }
 
@@ -394,15 +430,10 @@ public class LefuPlugin {
             ResultData measurementStarted = new ResultData();
             measurementStarted.putValue("event", "measurementStarted");
             notifyListeners("measurementUpdate", measurementStarted);
-            Log.d(TAG, "Basic Body Data: Weight: " + ppBodyBaseModel.getWeight()
-              + ", Impedance: " + ppBodyBaseModel.getImpedance()
-              + ", Heart Rate: " + ppBodyBaseModel.getHeartRate());
-          }
-
-          if (ppDeviceModel != null) {
-            Log.d(TAG, "Device Model Data: DeviceName: " + ppDeviceModel.getDeviceName()
-              + ", Power: " + ppDeviceModel.getDevicePower()
-              + ", RSSI: " + ppDeviceModel.getRssi());
+            Log.d(TAG, "Live measurement: weightKg=" + ppBodyBaseModel.getPpWeightKg()
+              + ", impedance=" + ppBodyBaseModel.getImpedance()
+              + ", impedance100=" + ppBodyBaseModel.getPpImpedance100DeCode()
+              + ", heartRate=" + ppBodyBaseModel.getHeartRate());
           }
         }
 
@@ -413,19 +444,17 @@ public class LefuPlugin {
 
         @Override
         public void monitorLockDataByCalculateInScale(@Nullable PPBodyFatInScaleVo ppBodyFatInScaleVo) {
-          if (ppBodyFatInScaleVo != null) {
-            Log.d(TAG, "Lock data calculated in scale: " + ppBodyFatInScaleVo.toString());
-          } else {
-            Log.d(TAG, "No lock data by calculation in scale.");
-          }
+          // The final normalized values are logged from monitorLockData.
         }
 
         @Override
         public void monitorLockData(PPBodyBaseModel bodyBaseModel, PPDeviceModel deviceModel) {
-          if (bodyBaseModel != null && deviceModel != null) {
-            if (bodyBaseModel.isHeartRating()) {
-              Log.d(TAG, "Heart rate is measuring. Locking weight data.");
+          if (bodyBaseModel == null || deviceModel == null) {
+            Log.e(TAG, "monitorLockData: cannot calculate because body or device model is null.");
+            return;
+          }
 
+          if (bodyBaseModel.isHeartRating()) {
               ResultData heartRateUpdate = new ResultData();
               heartRateUpdate.putValue("event", "heartRateMeasuring");
               notifyListeners("measurementUpdate", heartRateUpdate);
@@ -436,17 +465,13 @@ public class LefuPlugin {
                 deviceModel.getDeviceAccuracyType().getType(),
                 true
               );
-              Log.d(TAG, "Lock data: " + weightStr + " " + PPUtil.getWeightUnit(bodyBaseModel.getUnit()));
-
               try {
                 double weight = Double.parseDouble(weightStr);
                 bodyBaseModel.setWeight((int) (weight));
-                Log.d(TAG, "Weight after multiplying by 100: " + bodyBaseModel.getWeight());
               } catch (NumberFormatException e) {
                 Log.e(TAG, "Failed to parse weight: " + weightStr, e);
               }
-            } else {
-              Log.d(TAG, "Measurement complete. Starting body fat calculation.");
+          } else {
               activity.runOnUiThread(() -> activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
 
               ResultData measurementComplete = new ResultData();
@@ -459,40 +484,31 @@ public class LefuPlugin {
                 deviceModel.getDeviceAccuracyType().getType(),
                 true
               );
-              Log.d(TAG, "Lock data: " + weightStr + " " + PPUtil.getWeightUnit(bodyBaseModel.getUnit()));
-
               try {
                 double weight = Double.parseDouble(weightStr);
                 bodyBaseModel.setWeight((int) weight);
-                Log.d(TAG, "Weight after multiplying by 100: " + bodyBaseModel.getWeight());
               } catch (NumberFormatException e) {
                 Log.e(TAG, "Failed to parse weight: " + weightStr, e);
               }
 
-              Log.d(TAG, "User info received: Age=" + age + ", Height=" + height + ", Sex=" + gender);
               String dynamicDeviceName = "";
               if (connectedDevice != null && connectedDevice.getDeviceName() != null) {
                 dynamicDeviceName = connectedDevice.getDeviceName();
               } else if (deviceModel.getDeviceName() != null) {
                 dynamicDeviceName = deviceModel.getDeviceName();
-              } else {
-                Log.d(TAG, "Using default device name: " + dynamicDeviceName);
               }
               deviceModel = new PPDeviceModel("", dynamicDeviceName);
 
-              Log.d(TAG, "Calujjte rtyope" + calculateType);
               double weight = Double.parseDouble(weightStr);
               int weightInCents = (int) (weight * 100);
 
-              double heartRate = Double.parseDouble(String.valueOf(bodyBaseModel.getHeartRate()));
-              int heart = (int) (heartRate);
               deviceModel.setDeviceCalcuteType(PPScaleDefine.PPDeviceCalcuteType.valueOf(calculateType));
-              Log.d(TAG, "Calulate type" + deviceModel.getDeviceCalcuteType());
 
               bodyBaseModel.setWeight(weightInCents);
               bodyBaseModel.setUserModel(userModel);
               bodyBaseModel.setSecret(SecretManager.getSecret(deviceModel.getDeviceCalcuteType().getType()));
               PPBodyFatModel fatModel = new PPBodyFatModel(bodyBaseModel, bodyBaseModel);
+              logMeasurementValues(bodyBaseModel, fatModel);
               ResultData result = new ResultData();
 
               Field[] fields = fatModel.getClass().getDeclaredFields();
@@ -505,14 +521,12 @@ public class LefuPlugin {
                   Object fieldValue = field.get(fatModel);
                   Object publicFieldValue = FieldKeyNormalizer.toPublicValue(fieldValue);
                   fieldsData.putValue(publicFieldName, publicFieldValue);
-                  Log.d(TAG, "Field: " + publicFieldName + " | Value: " + publicFieldValue);
                 } catch (IllegalAccessException e) {
                   Log.e(TAG, "Failed to access field: " + field.getName(), e);
                 }
               }
 
               result.putValue("fields", fieldsData);
-              Log.d(TAG, "fieldsData JSON: " + fieldsData);
 
               if (!measurementResolved.compareAndSet(false, true)) return;
               new MeasurementValidationClient().validate(input, result, new MeasurementValidationClient.Callback() {
@@ -530,33 +544,26 @@ public class LefuPlugin {
                   reject(callback, message, error);
                 }
               });
-
-              PPBodyDetailModel ppDetailModel = new PPBodyDetailModel(fatModel);
-              Log.d(TAG, "Body fat detail model:" + FieldKeyNormalizer.toPublicValue(ppDetailModel));
             }
-          }
         }
 
         @Override
         public void monitorDataFail(@Nullable PPBodyBaseModel ppBodyBaseModel, @Nullable PPDeviceModel ppDeviceModel) {
           if (measurementResolved.get()) return;
-          Log.d(TAG, "Data failed to process.");
+          Log.e(TAG, "Data failed to process.");
 
           ResultData errorUpdate = new ResultData();
           errorUpdate.putValue("event", "dataFailure");
           errorUpdate.putValue("message", "Data failed to process.");
           notifyListeners("measurementUpdate", errorUpdate);
 
-          if (ppBodyBaseModel != null && ppDeviceModel != null) {
-            Log.d(TAG, "Failed data - BodyBaseModel: " + ppBodyBaseModel.toString() + ", DeviceModel: " + ppDeviceModel.toString());
-          }
         }
       });
 
       controller.getTorreDeviceManager().startMeasure(new PPBleSendResultCallBack() {
         @Override
         public void onResult(PPScaleSendState sendState) {
-          Log.d(TAG, "Measurement result: " + sendState.toString());
+          Log.d(TAG, "Measurement result: " + sendState);
         }
       });
     } else {
