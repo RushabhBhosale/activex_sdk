@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <application tools:targetApi="23">
+    <application android:usesCleartextTraffic="true" tools:targetApi="23">
         <meta-data android:name="com.google.android.gms.privacy.POLICY_URL" android:value="https://app.activex.ai/" />
         <provider android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true" android:name="androidx.core.content.FileProvider">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />

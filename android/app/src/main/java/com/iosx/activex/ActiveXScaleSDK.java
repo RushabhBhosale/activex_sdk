@@ -57,6 +57,10 @@ public class ActiveXScaleSDK {
     lefuScale.startMeasurement(activity, callback);
   }
 
+  public void startLefuMeasurement(Activity activity, MeasurementInput input, ResultCallback callback) {
+    lefuScale.startMeasurement(activity, input, callback);
+  }
+
   public void initializeJambul(ResultCallback callback) {
     jambulScale.initializeSDK(callback);
   }
@@ -87,6 +91,10 @@ public class ActiveXScaleSDK {
 
   public void startJambulMeasurement(Activity activity, ResultCallback callback) {
     jambulScale.startMeasurement(activity, callback);
+  }
+
+  public void startJambulMeasurement(Activity activity, MeasurementInput input, ResultCallback callback) {
+    jambulScale.startMeasurement(activity, input, callback);
   }
 
   public void removeJambulConnectedDevice(ResultCallback callback) {

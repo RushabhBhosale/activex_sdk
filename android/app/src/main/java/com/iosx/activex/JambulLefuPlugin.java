@@ -108,8 +108,6 @@ public class JambulLefuPlugin {
 
         ResultData evt = new ResultData();
         evt.putValue("event", "measurementStarted");
-        evt.putValue("weight", body.getWeight());
-        evt.putValue("weightKg", body.getPpWeightKg());
         notifyListeners("measurementUpdate", evt);
 
         Log.d(TAG, "Jambul process weightKg=" + body.getPpWeightKg());
@@ -123,7 +121,6 @@ public class JambulLefuPlugin {
 
         ResultData measurementComplete = new ResultData();
         measurementComplete.putValue("event", "measurementComplete");
-        measurementComplete.putValue("weightKg", bodyBaseModel.getPpWeightKg());
         notifyListeners("measurementUpdate", measurementComplete);
       }
 
@@ -322,6 +319,16 @@ public class JambulLefuPlugin {
   }
 
   public void startMeasurement(Activity activity, ResultCallback callback) {
+    startMeasurement(activity, null, callback);
+  }
+
+  public void startMeasurement(Activity activity, MeasurementInput input, ResultCallback callback) {
+    String inputError = input == null ? "Measurement input is required." : input.validationError();
+    if (inputError != null) {
+      reject(callback, inputError);
+      return;
+    }
+
     if (activity != null) {
       activity.runOnUiThread(() ->
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -404,14 +411,8 @@ public class JambulLefuPlugin {
             try {
               field.setAccessible(true);
               Object v = field.get(fatModel);
-
-              if (v instanceof Number) {
-                fieldsData.putValue(field.getName(), (Number) v);
-              } else if (v instanceof Boolean) {
-                fieldsData.putValue(field.getName(), (Boolean) v);
-              } else {
-                fieldsData.putValue(field.getName(), v != null ? String.valueOf(v) : "N/A");
-              }
+              String publicFieldName = FieldKeyNormalizer.toPublicKey(field.getName());
+              fieldsData.putValue(publicFieldName, FieldKeyNormalizer.toPublicValue(v));
             } catch (IllegalAccessException ignore) {}
           }
 
@@ -419,9 +420,9 @@ public class JambulLefuPlugin {
           result.putValue("fields", fieldsData);
 
           PPBodyDetailModel detail = new PPBodyDetailModel(fatModel);
-          Log.d(TAG, "Body detail: " + detail.toString());
+          Log.d(TAG, "Body detail: " + FieldKeyNormalizer.toPublicValue(detail));
 
-          resolved.set(true);
+          if (!resolved.compareAndSet(false, true)) return;
           ensureJambulListener();
           jambulController.registDataChangeListener(jambulDataChangeListener);
 
@@ -431,7 +432,21 @@ public class JambulLefuPlugin {
             );
           }
 
-          resolve(callback, result);
+          new MeasurementValidationClient().validate(input, result, new MeasurementValidationClient.Callback() {
+            @Override
+            public void onAuthorized() {
+              resolve(callback, result);
+            }
+
+            @Override
+            public void onRejected(String message, Throwable error) {
+              ResultData validationFailed = new ResultData();
+              validationFailed.putValue("event", "measurementAuthorizationFailed");
+              validationFailed.putValue("message", message);
+              notifyListeners("measurementUpdate", validationFailed);
+              reject(callback, message, error);
+            }
+          });
         } catch (Exception e) {
           Log.e(TAG, "Calculation failed", e);
 

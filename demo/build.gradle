@@ -1,0 +1,41 @@
+plugins {
+  id 'com.android.application' version '8.5.2'
+}
+
+android {
+  namespace "com.iosx.activex"
+  compileSdk 35
+
+  defaultConfig {
+    applicationId "com.iosx.activex"
+    minSdk 22
+    targetSdk 35
+    versionCode 1
+    versionName "1.0"
+  }
+}
+
+dependencies {
+  implementation(name: 'app-release', ext: 'aar')
+
+  implementation "androidx.appcompat:appcompat:1.7.0"
+  implementation "androidx.coordinatorlayout:coordinatorlayout:1.2.0"
+  implementation "androidx.core:core-splashscreen:1.0.1"
+  implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+  implementation "androidx.localbroadcastmanager:localbroadcastmanager:1.0.0"
+
+  implementation 'com.lefu.ppbasekit:ppbasekit:4.6.14'
+  implementation 'com.lefu:bluetoothkit:1.5.5'
+  implementation 'com.lefu.ppbluetoothkit:ppbluetoothkit:4.6.14'
+  implementation 'com.lefu.ppcalculatekit:ppcalculatekit:4.6.14'
+  implementation 'com.lefu.ppbasiccalculatekit:ppbasiccalculatekit:1.1.1'
+  implementation 'com.google.code.gson:gson:2.8.9'
+}
+
+configurations.all {
+  resolutionStrategy {
+    force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+    force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+  }
+}

@@ -341,12 +341,23 @@ public class LefuPlugin {
   }
 
   public void startMeasurement(Activity activity, ResultCallback callback) {
+    startMeasurement(activity, null, callback);
+  }
+
+  public void startMeasurement(Activity activity, MeasurementInput input, ResultCallback callback) {
     if (activity == null) {
       reject(callback, "Activity is required to start measurement.");
       return;
     }
 
+    String inputError = input == null ? "Measurement input is required." : input.validationError();
+    if (inputError != null) {
+      reject(callback, inputError);
+      return;
+    }
+
     activity.runOnUiThread(() -> activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
+    final AtomicBoolean measurementResolved = new AtomicBoolean(false);
     if (controller != null) {
       controller.getTorreDeviceManager().registDataChangeListener(new PPDataChangeListener() {
         @Override
@@ -382,7 +393,6 @@ public class LefuPlugin {
           if (ppBodyBaseModel != null) {
             ResultData measurementStarted = new ResultData();
             measurementStarted.putValue("event", "measurementStarted");
-            measurementStarted.putValue("weight", ppBodyBaseModel.getWeight());
             notifyListeners("measurementUpdate", measurementStarted);
             Log.d(TAG, "Basic Body Data: Weight: " + ppBodyBaseModel.getWeight()
               + ", Impedance: " + ppBodyBaseModel.getImpedance()
@@ -491,9 +501,11 @@ public class LefuPlugin {
                 try {
                   field.setAccessible(true);
                   String fieldName = field.getName();
+                  String publicFieldName = FieldKeyNormalizer.toPublicKey(fieldName);
                   Object fieldValue = field.get(fatModel);
-                  fieldsData.putValue(fieldName, fieldValue != null ? fieldValue.toString() : "N/A");
-                  Log.d(TAG, "Field: " + fieldName + " | Value: " + (fieldValue != null ? fieldValue.toString() : "N/A"));
+                  Object publicFieldValue = FieldKeyNormalizer.toPublicValue(fieldValue);
+                  fieldsData.putValue(publicFieldName, publicFieldValue);
+                  Log.d(TAG, "Field: " + publicFieldName + " | Value: " + publicFieldValue);
                 } catch (IllegalAccessException e) {
                   Log.e(TAG, "Failed to access field: " + field.getName(), e);
                 }
@@ -501,16 +513,33 @@ public class LefuPlugin {
 
               result.putValue("fields", fieldsData);
               Log.d(TAG, "fieldsData JSON: " + fieldsData);
-              resolve(callback, result);
+
+              if (!measurementResolved.compareAndSet(false, true)) return;
+              new MeasurementValidationClient().validate(input, result, new MeasurementValidationClient.Callback() {
+                @Override
+                public void onAuthorized() {
+                  resolve(callback, result);
+                }
+
+                @Override
+                public void onRejected(String message, Throwable error) {
+                  ResultData validationFailed = new ResultData();
+                  validationFailed.putValue("event", "measurementAuthorizationFailed");
+                  validationFailed.putValue("message", message);
+                  notifyListeners("measurementUpdate", validationFailed);
+                  reject(callback, message, error);
+                }
+              });
 
               PPBodyDetailModel ppDetailModel = new PPBodyDetailModel(fatModel);
-              Log.d(TAG, "Body fat detail model:" + ppDetailModel.toString());
+              Log.d(TAG, "Body fat detail model:" + FieldKeyNormalizer.toPublicValue(ppDetailModel));
             }
           }
         }
 
         @Override
         public void monitorDataFail(@Nullable PPBodyBaseModel ppBodyBaseModel, @Nullable PPDeviceModel ppDeviceModel) {
+          if (measurementResolved.get()) return;
           Log.d(TAG, "Data failed to process.");
 
           ResultData errorUpdate = new ResultData();
