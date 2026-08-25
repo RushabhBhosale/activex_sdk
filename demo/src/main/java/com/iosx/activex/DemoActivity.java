@@ -6,16 +6,21 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.GradientDrawable;
 import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewParent;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.text.InputType;
+
+import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -27,14 +32,15 @@ public class DemoActivity extends Activity {
   private static final int REQUEST_PERMISSIONS = 1001;
 
   private ActiveXScaleSDK sdk;
-  private TextView logView;
   private EditText ageInput;
   private EditText heightInput;
   private EditText uniquePatientIdInput;
   private EditText dateInput;
   private EditText patientNameInput;
   private EditText activeXSecretInput;
-  private boolean lefuInitialized = false;
+  private TextView activityLogView;
+  private ScrollView activityLogScrollView;
+  private boolean activeXInitialized = false;
   private final SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
   @Override
@@ -42,19 +48,22 @@ public class DemoActivity extends Activity {
     super.onCreate(savedInstanceState);
 
     sdk = new ActiveXScaleSDK(this);
+    setContentView(createContentView());
     sdk.setEventListener(new LefuEventListener() {
       @Override
       public void onEvent(String eventName, ResultData data) {
-        appendLog("event " + eventName + ": " + data);
+        handleSdkEvent(eventName, data);
       }
 
       @Override
       public void onDeviceInfo(ResultData data) {
-        appendLog("deviceInfo: " + data);
+        Object deviceName = data == null ? null : data.get("deviceName");
+        appendActivityLog(deviceName == null
+          ? "Device connected"
+          : "Device connected: " + deviceName);
       }
     });
-
-    setContentView(createContentView());
+    appendActivityLog("Demo ready");
     requestRuntimePermissions();
   }
 
@@ -63,60 +72,221 @@ public class DemoActivity extends Activity {
     root.setOrientation(LinearLayout.VERTICAL);
     int padding = dp(16);
     root.setPadding(padding, padding, padding, padding);
+    root.setBackgroundColor(0xFFF7F9FC);
+
+    LinearLayout header = new LinearLayout(this);
+    header.setOrientation(LinearLayout.VERTICAL);
+    header.setPadding(dp(18), dp(18), dp(18), dp(18));
+
+    GradientDrawable headerBackground = new GradientDrawable();
+    headerBackground.setColor(0xFF123B5D);
+    headerBackground.setCornerRadius(dp(14));
+    header.setBackground(headerBackground);
 
     TextView title = new TextView(this);
-    title.setText("ActiveX Lefu Demo");
-    title.setTextSize(22);
-    title.setTextColor(0xFF212121);
-    root.addView(title, new LinearLayout.LayoutParams(
+    title.setText("ActiveX SDK Demo");
+    title.setTextSize(23);
+    title.setTextColor(0xFFFFFFFF);
+    header.addView(title, new LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
       LinearLayout.LayoutParams.WRAP_CONTENT
     ));
 
+    LinearLayout.LayoutParams headerParams = new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.WRAP_CONTENT
+    );
+    headerParams.bottomMargin = dp(16);
+    root.addView(header, headerParams);
+
+    addActivityPanel(root);
+
+    addSectionTitle(root, "Patient profile");
     ageInput = addNumberInput(root, "Age", "30", false);
     heightInput = addNumberInput(root, "Height in cm", "175", true);
+
+    addSectionTitle(root, "Measurement request");
     uniquePatientIdInput = addTextInput(root, "Unique Patient ID", "");
     dateInput = addTextInput(root, "Date", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
     patientNameInput = addTextInput(root, "Patient Name", "");
     activeXSecretInput = addTextInput(root, "ActiveX Secret", "");
     activeXSecretInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
 
-    addButton(root, "Request Permissions", v -> requestRuntimePermissions());
-    addButton(root, "Initialize Lefu SDK", v -> initializeLefuSdk());
-    addButton(root, "Sync User", v -> syncLefuUser());
-    addButton(root, "Start Lefu Scan", v -> startLefuScan());
-    addButton(root, "Stop Lefu Scan", v -> sdk.stopLefuScan(callback("stopLefuScan")));
-    addButton(root, "Start Lefu Measurement", v -> startLefuMeasurement());
+    addSectionTitle(root, "SDK actions");
+    addButtonRow(root,
+      "Request Permissions", v -> requestRuntimePermissions(),
+      "Initialize ActiveX SDK", v -> initializeActiveXSdk());
+    addButtonRow(root,
+      "Sync User", v -> syncActiveXUser(),
+      "Start ActiveX Scan", v -> startActiveXScan());
+    addButtonRow(root,
+      "Stop ActiveX Scan", v -> sdk.stopLefuScan(statusCallback("Scan stopped")),
+      "Start Measurement", v -> startActiveXMeasurement());
 
-    logView = new TextView(this);
-    logView.setTextSize(13);
-    logView.setTextColor(0xFF263238);
-    logView.setText("Ready.\n");
-
-    ScrollView scrollView = new ScrollView(this);
-    scrollView.addView(logView);
-    LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(
-      LinearLayout.LayoutParams.MATCH_PARENT,
-      0
-    );
-    logParams.weight = 1;
-    logParams.topMargin = dp(12);
-    root.addView(scrollView, logParams);
-
-    return root;
+    return wrapInScrollView(root);
   }
 
-  private void addButton(LinearLayout root, String text, View.OnClickListener listener) {
-    Button button = new Button(this);
-    button.setText(text);
-    button.setAllCaps(false);
-    button.setOnClickListener(listener);
+  private void addSectionTitle(LinearLayout root, String text) {
+    TextView sectionTitle = new TextView(this);
+    sectionTitle.setText(text);
+    sectionTitle.setTextSize(13);
+    sectionTitle.setTextColor(0xFF546E7A);
     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
       LinearLayout.LayoutParams.MATCH_PARENT,
       LinearLayout.LayoutParams.WRAP_CONTENT
     );
-    params.topMargin = dp(8);
-    root.addView(button, params);
+    params.topMargin = dp(14);
+    root.addView(sectionTitle, params);
+  }
+
+  private void addActivityPanel(LinearLayout root) {
+    LinearLayout panel = new LinearLayout(this);
+    panel.setOrientation(LinearLayout.VERTICAL);
+    panel.setPadding(dp(14), dp(12), dp(14), dp(12));
+
+    GradientDrawable panelBackground = new GradientDrawable();
+    panelBackground.setColor(0xFFFFFFFF);
+    panelBackground.setCornerRadius(dp(10));
+    panelBackground.setStroke(dp(1), 0xFFE1E7EC);
+    panel.setBackground(panelBackground);
+
+    addPanelTitle(panel, "Activity logs");
+    activityLogView = new TextView(this);
+    activityLogView.setTextSize(12);
+    activityLogView.setTextColor(0xFF37474F);
+    activityLogView.setTextIsSelectable(true);
+    activityLogView.setPadding(0, dp(8), 0, dp(8));
+
+    activityLogScrollView = new ActivityLogScrollView(this);
+    activityLogScrollView.setFillViewport(false);
+    activityLogScrollView.setVerticalScrollBarEnabled(true);
+    activityLogScrollView.addView(activityLogView, new ScrollView.LayoutParams(
+      ScrollView.LayoutParams.MATCH_PARENT,
+      ScrollView.LayoutParams.WRAP_CONTENT
+    ));
+    panel.addView(activityLogScrollView, new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      dp(148)
+    ));
+
+    LinearLayout.LayoutParams panelParams = new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.WRAP_CONTENT
+    );
+    panelParams.topMargin = dp(2);
+    root.addView(panel, panelParams);
+  }
+
+  private static class ActivityLogScrollView extends ScrollView {
+    ActivityLogScrollView(Context context) {
+      super(context);
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+      keepTouchInsideLog(event);
+      boolean intercepted = super.onInterceptTouchEvent(event);
+      releaseTouchAfterGesture(event);
+      return intercepted;
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+      keepTouchInsideLog(event);
+      boolean handled = super.onTouchEvent(event);
+      releaseTouchAfterGesture(event);
+      return handled;
+    }
+
+    private void keepTouchInsideLog(MotionEvent event) {
+      int action = event.getActionMasked();
+      if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+        requestDisallowParentIntercept();
+      }
+    }
+
+    private void releaseTouchAfterGesture(MotionEvent event) {
+      int action = event.getActionMasked();
+      if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+        ViewParent parent = getParent();
+        if (parent != null) {
+          parent.requestDisallowInterceptTouchEvent(false);
+        }
+      }
+    }
+
+    private void requestDisallowParentIntercept() {
+      ViewParent parent = getParent();
+      if (parent != null) {
+        parent.requestDisallowInterceptTouchEvent(true);
+      }
+    }
+  }
+
+  private TextView addPanelTitle(LinearLayout panel, String text) {
+    TextView title = new TextView(this);
+    title.setText(text);
+    title.setTextSize(15);
+    title.setTextColor(0xFF123B5D);
+    panel.addView(title, new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.WRAP_CONTENT
+    ));
+    return title;
+  }
+
+  private ScrollView wrapInScrollView(LinearLayout root) {
+    ScrollView scrollView = new ScrollView(this);
+    scrollView.setFillViewport(true);
+    scrollView.addView(root);
+    return scrollView;
+  }
+
+  private void addButtonRow(
+    LinearLayout root,
+    String firstText,
+    View.OnClickListener firstListener,
+    String secondText,
+    View.OnClickListener secondListener
+  ) {
+    LinearLayout row = new LinearLayout(this);
+    row.setOrientation(LinearLayout.HORIZONTAL);
+
+    row.addView(createButton(firstText, firstListener), buttonParams(true));
+    row.addView(createButton(secondText, secondListener), buttonParams(false));
+
+    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.WRAP_CONTENT
+    );
+    rowParams.topMargin = dp(6);
+    root.addView(row, rowParams);
+  }
+
+  private Button createButton(String text, View.OnClickListener listener) {
+    Button button = new Button(this);
+    button.setText(text);
+    button.setTextSize(12);
+    button.setAllCaps(false);
+    button.setMinHeight(0);
+    button.setMinWidth(0);
+    button.setPadding(dp(4), 0, dp(4), 0);
+    button.setOnClickListener(listener);
+    return button;
+  }
+
+  private LinearLayout.LayoutParams buttonParams(boolean first) {
+    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+      0,
+      dp(44),
+      1f
+    );
+    if (first) {
+      params.rightMargin = dp(4);
+    } else {
+      params.leftMargin = dp(4);
+    }
+    return params;
   }
 
   private EditText addNumberInput(LinearLayout root, String hint, String value, boolean decimal) {
@@ -153,24 +323,24 @@ public class DemoActivity extends Activity {
     return input;
   }
 
-  private void syncLefuUser() {
+  private void syncActiveXUser() {
     try {
       int age = Integer.parseInt(ageInput.getText().toString().trim());
       double height = Double.parseDouble(heightInput.getText().toString().trim());
-      sdk.syncLefuUserInfo(age, height, "male", callback("syncLefuUserInfo"));
+      sdk.syncLefuUserInfo(age, height, "male", statusCallback("User profile synchronized"));
     } catch (NumberFormatException e) {
-      appendLog("syncLefuUserInfo error: enter valid age and height");
+      appendActivityLog("Enter a valid age and height");
     }
   }
 
-  private void startLefuMeasurement() {
+  private void startActiveXMeasurement() {
     String uniquePatientId = uniquePatientIdInput.getText().toString().trim();
     String date = dateInput.getText().toString().trim();
     String patientName = patientNameInput.getText().toString().trim();
     String activeXSecret = activeXSecretInput.getText().toString().trim();
 
     if (uniquePatientId.isEmpty() || date.isEmpty() || patientName.isEmpty() || activeXSecret.isEmpty()) {
-      appendLog("startLefuMeasurement blocked: enter patient ID, date, name, and ActiveX secret.");
+      appendActivityLog("Enter all measurement details");
       return;
     }
 
@@ -180,90 +350,157 @@ public class DemoActivity extends Activity {
       patientName,
       activeXSecret
     );
-    sdk.startLefuMeasurement(this, input, callback("startLefuMeasurement"));
-  }
-
-  private void initializeLefuSdk() {
-    sdk.initializeLefu(new ResultCallback() {
+    appendActivityLog("Waiting for SDKPOST response...");
+    appendActivityLog("Measurement started");
+    sdk.startLefuMeasurement(this, input, new ResultCallback() {
       @Override
       public void onSuccess(ResultData data) {
-        lefuInitialized = true;
-        appendLog("initializeLefu success: " + data);
+        appendActivityLog("SDKPOST response received");
+        showResponse(data);
       }
 
       @Override
       public void onError(String message, Throwable error) {
-        lefuInitialized = false;
-        appendLog("initializeLefu error: " + message);
+        appendActivityLog("SDKPOST request failed: " + message);
+        showResponseError(message);
       }
     });
   }
 
-  private void startLefuScan() {
+  private void showResponse(ResultData response) {
+    try {
+      appendActivityLog("SDKPOST response\n" + new JSONObject(response).toString(2));
+    } catch (Exception error) {
+      appendActivityLog("SDKPOST response\n" + String.valueOf(response));
+    }
+  }
+
+  private void showResponseError(String message) {
+    appendActivityLog("Request failed: " + message);
+  }
+
+  private ResultCallback statusCallback(String successMessage) {
+    return new ResultCallback() {
+      @Override
+      public void onSuccess(ResultData data) {
+        appendActivityLog(successMessage);
+      }
+
+      @Override
+      public void onError(String message, Throwable error) {
+        appendActivityLog("SDK error: " + message);
+      }
+    };
+  }
+
+  private void handleSdkEvent(String eventName, ResultData data) {
+    if ("lefuDeviceInfo".equals(eventName)) {
+      boolean connected = data != null && Boolean.TRUE.equals(data.get("connected"));
+      appendActivityLog(connected ? "Device found, connecting..." : "Scanning for a device...");
+      return;
+    }
+
+    if (!"measurementUpdate".equals(eventName)) return;
+
+    String event = data == null ? "" : String.valueOf(data.get("event"));
+    switch (event) {
+      case "measurementStarted":
+        appendActivityLog("Measurement data started");
+        break;
+      case "bodyFatMeasurementStarted":
+        appendActivityLog("Body composition calculation started");
+        break;
+      case "heartRateMeasuring":
+        appendActivityLog("Measuring heart rate");
+        break;
+      case "measurementComplete":
+        appendActivityLog("Measurement complete; waiting for SDKPOST");
+        break;
+      case "dataFailure":
+        appendActivityLog("Measurement data failed");
+        break;
+      case "measurementAuthorizationFailed":
+        appendActivityLog("SDKPOST authorization failed");
+        break;
+      default:
+        break;
+    }
+  }
+
+  private void appendActivityLog(String message) {
+    runOnUiThread(() -> {
+      if (activityLogView == null) return;
+      String line = timeFormat.format(new Date()) + "  " + message + "\n";
+      activityLogView.append(line);
+      activityLogScrollView.post(() -> activityLogScrollView.fullScroll(View.FOCUS_DOWN));
+    });
+  }
+
+  private void initializeActiveXSdk() {
+    appendActivityLog("Initializing SDK...");
+    sdk.initializeLefu(new ResultCallback() {
+      @Override
+      public void onSuccess(ResultData data) {
+        activeXInitialized = true;
+        appendActivityLog("SDK initialized");
+      }
+
+      @Override
+      public void onError(String message, Throwable error) {
+        activeXInitialized = false;
+        appendActivityLog("SDK initialization failed: " + message);
+      }
+    });
+  }
+
+  private void startActiveXScan() {
     if (!hasRequiredPermissions()) {
-      appendLog("Start scan blocked: missing Bluetooth/location permission.");
+      appendActivityLog("Bluetooth permissions are required");
       requestRuntimePermissions();
       return;
     }
 
     BluetoothAdapter adapter = getBluetoothAdapter();
     if (adapter == null) {
-      appendLog("Start scan blocked: this device has no Bluetooth adapter.");
+      appendActivityLog("Bluetooth is unavailable");
       return;
     }
     if (!adapter.isEnabled()) {
-      appendLog("Start scan blocked: turn on Bluetooth.");
+      appendActivityLog("Bluetooth is turned off");
       return;
     }
 
     boolean locationEnabled = isLocationEnabled();
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !locationEnabled) {
-      appendLog("Start scan blocked: turn on Location services for BLE scanning.");
+      appendActivityLog("Location services are turned off");
       return;
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !locationEnabled) {
-      appendLog("Location services are off. Android 12+ usually allows BLE scan, but some vendor stacks still filter results.");
-    }
-    if (!lefuInitialized) {
-      appendLog("Lefu SDK has not been initialized yet. Initializing before scan...");
+    if (!activeXInitialized) {
+      appendActivityLog("Initializing SDK before scanning");
       sdk.initializeLefu(new ResultCallback() {
         @Override
         public void onSuccess(ResultData data) {
-          lefuInitialized = true;
-          appendLog("initializeLefu success: " + data);
-          sdk.startLefuScan(callback("startLefuScan"));
+          activeXInitialized = true;
+          appendActivityLog("SDK initialized");
+          sdk.startLefuScan(statusCallback("Scanning started"));
         }
 
         @Override
         public void onError(String message, Throwable error) {
-          lefuInitialized = false;
-          appendLog("initializeLefu error: " + message);
+          activeXInitialized = false;
+          appendActivityLog("SDK initialization failed: " + message);
         }
       });
       return;
     }
 
-    appendLog("Starting Lefu scan. Keep the scale awake and nearby.");
-    sdk.startLefuScan(callback("startLefuScan"));
-  }
-
-  private ResultCallback callback(String operation) {
-    return new ResultCallback() {
-      @Override
-      public void onSuccess(ResultData data) {
-        appendLog(operation + " success: " + data);
-      }
-
-      @Override
-      public void onError(String message, Throwable error) {
-        appendLog(operation + " error: " + message);
-      }
-    };
+    appendActivityLog("Scanning for a device...");
+    sdk.startLefuScan(statusCallback("Scanning started"));
   }
 
   private void requestRuntimePermissions() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-      appendLog("Runtime permissions not required for this Android version.");
+      appendActivityLog("Runtime permissions not required");
       return;
     }
 
@@ -277,10 +514,29 @@ public class DemoActivity extends Activity {
     }
 
     if (missing.isEmpty()) {
-      appendLog("Permissions already granted.");
-    } else {
-      requestPermissions(missing.toArray(new String[0]), REQUEST_PERMISSIONS);
+      appendActivityLog("Bluetooth permissions ready");
+      return;
     }
+
+    appendActivityLog("Requesting Bluetooth permissions");
+    requestPermissions(missing.toArray(new String[0]), REQUEST_PERMISSIONS);
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    if (requestCode != REQUEST_PERMISSIONS) return;
+
+    boolean allGranted = grantResults.length > 0;
+    for (int result : grantResults) {
+      if (result != PackageManager.PERMISSION_GRANTED) {
+        allGranted = false;
+        break;
+      }
+    }
+    appendActivityLog(allGranted
+      ? "Bluetooth permissions granted"
+      : "Bluetooth permissions denied");
   }
 
   private boolean hasRequiredPermissions() {
@@ -323,24 +579,6 @@ public class DemoActivity extends Activity {
     }
     return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
       || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
-  }
-
-  @Override
-  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-    super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-    if (requestCode != REQUEST_PERMISSIONS) return;
-
-    for (int i = 0; i < permissions.length; i++) {
-      boolean granted = i < grantResults.length && grantResults[i] == PackageManager.PERMISSION_GRANTED;
-      appendLog("permission " + permissions[i] + ": " + (granted ? "granted" : "denied"));
-    }
-  }
-
-  private void appendLog(String message) {
-    runOnUiThread(() -> {
-      String line = timeFormat.format(new Date()) + "  " + message + "\n";
-      logView.append(line);
-    });
   }
 
   private int dp(int value) {

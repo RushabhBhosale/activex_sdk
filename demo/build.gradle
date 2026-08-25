@@ -29,10 +29,8 @@ android {
   }
 
   defaultConfig {
-    // Keep the standalone demo separate from the SDK's main app. They use
-    // different signing keys, so sharing an application ID makes Android
-    // reject installs/updates on devices that already have the main app.
-    applicationId "com.iosx.activex.demo"
+    // The scale secret is generated for this exact application ID.
+    applicationId "com.iosx.activex"
     minSdk 22
     targetSdk 35
     versionCode 1
@@ -50,7 +48,7 @@ android {
 }
 
 dependencies {
-  implementation(name: 'app-release', ext: 'aar')
+  implementation(name: 'activeXSdk', ext: 'aar')
 
   implementation "androidx.appcompat:appcompat:1.7.0"
   implementation "androidx.coordinatorlayout:coordinatorlayout:1.2.0"

@@ -107,14 +107,7 @@ dependencies {
 }
 ```
 
-The supplied AAR is standalone for the Lefu/PP runtime. Do not add the following vendor dependencies to the client application:
-
-- `com.lefu.ppbasekit:ppbasekit`
-- `com.lefu:bluetoothkit`
-- `com.lefu.ppbluetoothkit:ppbluetoothkit`
-- `com.lefu.ppcalculatekit:ppcalculatekit`
-- `com.lefu.ppbasiccalculatekit:ppbasiccalculatekit`
-- `com.google.code.gson:gson`
+The supplied AAR contains the complete Lefu scale runtime. Do not add separate vendor scale, Bluetooth, calculation, or serialization dependencies to the client application.
 
 The client application may still use its normal AndroidX dependencies. The AAR contains the vendor runtime classes, calculation assets, Bluetooth assets, native calculation libraries, and consumer ProGuard rules.
 
@@ -513,45 +506,15 @@ Common Lefu events:
 
 ## 16. Handle the measurement result
 
-The successful `ResultData` contains a `fields` map. The exact fields depend on scale model and calculation type. Do not hardcode a fixed field list without confirming the device contract with ActiveX.
+The successful `ResultData` contains only the parsed JSON response returned by `SdkDataPost`. The raw scale calculation is used internally to build the authorization request and is not returned to the client callback.
 
-Typical result shape:
-
-```json
-{
-  "fields": {
-    "weightKg": 72.4,
-    "heartRate": 71,
-    "bodyFatRate": 18.2
-  }
-}
-```
-
-The SDK normalizes result data:
-
-- Internal `PP` prefixes are removed where applicable.
-- Field-name capitalization is normalized.
-- Nested maps and lists are normalized recursively.
-- Null SDK values are returned as `"N/A"`.
-- The available fields can vary by device and firmware.
+The response keys and nesting are controlled by the API contract. The SDK preserves the response object recursively. If the endpoint returns a JSON array, primitive, or non-JSON body, it is exposed under the `response` key.
 
 Example:
 
 ```java
-private void handleAuthorizedMeasurement(ResultData result) {
-    Object fieldsObject = result.get("fields");
-
-    if (!(fieldsObject instanceof Map)) {
-        showMeasurementError("Measurement result did not contain fields.");
-        return;
-    }
-
-    Map<?, ?> fields = (Map<?, ?>) fieldsObject;
-    Object weight = fields.get("weightKg");
-    Object bodyFat = fields.get("bodyFatRate");
-
-    saveMeasurementToClientBackend(fields);
-    showMeasurementComplete(weight, bodyFat);
+private void handleAuthorizedMeasurement(ResultData response) {
+    showMeasurementComplete(response);
 }
 ```
 

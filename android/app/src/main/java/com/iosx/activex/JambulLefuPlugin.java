@@ -434,8 +434,8 @@ public class JambulLefuPlugin {
 
           new MeasurementValidationClient().validate(input, result, new MeasurementValidationClient.Callback() {
             @Override
-            public void onAuthorized() {
-              resolve(callback, result);
+            public void onAuthorized(ResultData response) {
+              resolve(callback, response);
             }
 
             @Override

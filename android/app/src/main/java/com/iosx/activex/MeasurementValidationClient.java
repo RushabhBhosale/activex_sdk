@@ -15,14 +15,16 @@ import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 final class MeasurementValidationClient {
   private static final String TAG = "SdkDataPost";
-  private static final String API_URL = "http://dev-api.myactivex.com/external/SdkDataPost";
+  private static final String API_URL = "https://api.activex.ai/external/SdkDataPost";
   private static final String API_KEY_HEADER = "x-api-key";
   private static final int CONNECT_TIMEOUT_MS = 15000;
   private static final int READ_TIMEOUT_MS = 15000;
@@ -30,7 +32,7 @@ final class MeasurementValidationClient {
   private static final int LOG_CHUNK_SIZE = 3000;
 
   interface Callback {
-    void onAuthorized();
+    void onAuthorized(ResultData response);
     void onRejected(String message, Throwable error);
   }
 
@@ -70,7 +72,7 @@ final class MeasurementValidationClient {
         Log.d(TAG, "POST response: HTTP " + responseCode);
         logInChunks("POST response body", responseBody);
         if (responseCode >= 200 && responseCode < 300 && isAllowed(responseBody)) {
-          callback.onAuthorized();
+          callback.onAuthorized(parseResponse(responseBody));
         } else {
           callback.onRejected(
             "Measurement authorization failed (HTTP " + responseCode + ").",
@@ -84,6 +86,57 @@ final class MeasurementValidationClient {
         if (connection != null) connection.disconnect();
       }
     });
+  }
+
+  private static ResultData parseResponse(String responseBody) {
+    ResultData response = new ResultData();
+    if (responseBody == null || responseBody.trim().isEmpty()) {
+      return response;
+    }
+
+    try {
+      Object parsed = new org.json.JSONTokener(responseBody).nextValue();
+      if (parsed instanceof JSONObject) {
+        JSONObject object = (JSONObject) parsed;
+        Iterator<String> keys = object.keys();
+        while (keys.hasNext()) {
+          String key = keys.next();
+          response.putValue(key, fromJsonValue(object.opt(key)));
+        }
+      } else {
+        response.putValue("response", fromJsonValue(parsed));
+      }
+    } catch (JSONException ignored) {
+      response.putValue("response", responseBody);
+    }
+
+    return response;
+  }
+
+  private static Object fromJsonValue(Object value) throws JSONException {
+    if (value == null || value == JSONObject.NULL) return null;
+
+    if (value instanceof JSONObject) {
+      ResultData object = new ResultData();
+      JSONObject jsonObject = (JSONObject) value;
+      Iterator<String> keys = jsonObject.keys();
+      while (keys.hasNext()) {
+        String key = keys.next();
+        object.putValue(key, fromJsonValue(jsonObject.opt(key)));
+      }
+      return object;
+    }
+
+    if (value instanceof JSONArray) {
+      List<Object> array = new ArrayList<>();
+      JSONArray jsonArray = (JSONArray) value;
+      for (int i = 0; i < jsonArray.length(); i++) {
+        array.add(fromJsonValue(jsonArray.opt(i)));
+      }
+      return array;
+    }
+
+    return value;
   }
 
   private static void logInChunks(String label, String value) {
