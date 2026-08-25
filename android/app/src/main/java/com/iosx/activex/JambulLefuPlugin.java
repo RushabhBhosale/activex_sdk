@@ -67,6 +67,24 @@ public class JambulLefuPlugin {
     if (eventListener != null) eventListener.onEvent(eventName, data);
   }
 
+  private void notifyScanState(String state, String message) {
+    ResultData result = new ResultData();
+    result.putValue("state", state);
+    result.putValue("message", message);
+    notifyListeners("scanState", result);
+  }
+
+  private void notifyConnectionState(String state, String message, PPDeviceModel device) {
+    ResultData result = new ResultData();
+    result.putValue("state", state);
+    result.putValue("message", message);
+    if (device != null) {
+      result.putValue("deviceName", device.getDeviceName());
+      result.putValue("deviceAddress", device.getDeviceMac());
+    }
+    notifyListeners("connectionState", result);
+  }
+
   private void notifyDeviceInfo(ResultData data) {
     if (eventListener != null) eventListener.onDeviceInfo(data);
   }
@@ -142,7 +160,14 @@ public class JambulLefuPlugin {
 
       @Override public void onImpedanceFatting() {}
       @Override public void onDeviceShutdown() {}
-      @Override public void monitorScaleState(@Nullable PPScaleState state) {}
+      @Override public void monitorScaleState(@Nullable PPScaleState state) {
+        if (state == null) return;
+
+        ResultData evt = new ResultData();
+        evt.putValue("event", "scaleState");
+        evt.putValue("state", state.toString());
+        notifyListeners("measurementUpdate", evt);
+      }
       @Override public void monitorLockDataByCalculateInScale(@Nullable PPBodyFatInScaleVo vo) {}
       @Override public void monitorFootLenMeasure(PPScaleFootState state, int i) {}
     };
@@ -158,16 +183,45 @@ public class JambulLefuPlugin {
 
     String mac = model.getDeviceMac();
     Log.d(TAG, "Jambul startSearch mac=" + mac);
+    notifyConnectionState("connecting", "Starting a Jambul session with the discovered scale...", model);
 
     jambulController.startSearch(mac, new PPBleStateInterface() {
       @Override
       public void monitorBluetoothWorkState(PPBleWorkState state, PPDeviceModel deviceModel) {
         Log.d(TAG, "Jambul workState=" + state);
+        PPDeviceModel reportedDevice = deviceModel != null ? deviceModel : model;
+        switch (state) {
+          case PPBleWorkStateConnected:
+            isJambulSessionRunning = true;
+            selectedDevice = reportedDevice;
+            notifyConnectionState("connected", "Jambul scale connected successfully.", reportedDevice);
+            ResultData connected = new ResultData();
+            connected.putValue("deviceName", reportedDevice.getDeviceName());
+            connected.putValue("deviceAddress", reportedDevice.getDeviceMac());
+            notifyDeviceInfo(connected);
+            break;
+          case PPBleWorkStateConnectFailed:
+            isJambulSessionRunning = false;
+            selectedDevice = null;
+            notifyConnectionState("failed", "Could not connect to the discovered Jambul scale.", reportedDevice);
+            break;
+          case PPBleWorkStateDisconnected:
+            isJambulSessionRunning = false;
+            selectedDevice = null;
+            notifyConnectionState("disconnected", "The Jambul scale disconnected.", reportedDevice);
+            break;
+          default:
+            notifyConnectionState("state", "Jambul connection state: " + state, reportedDevice);
+            break;
+        }
       }
 
       @Override
       public void monitorBluetoothSwitchState(PPBleSwitchState sw) {
         Log.d(TAG, "Bluetooth switch=" + sw);
+        if (sw == PPBleSwitchState.PPBleSwitchStateOff) {
+          notifyConnectionState("failed", "Bluetooth is turned off.", model);
+        }
       }
     });
 
@@ -179,7 +233,6 @@ public class JambulLefuPlugin {
     evt.putValue("deviceName", model.getDeviceName());
     evt.putValue("deviceAddress", model.getDeviceMac());
     notifyListeners("deviceConnectionChanged", evt);
-    notifyDeviceInfo(evt);
   }
 
   public void startScan(ResultCallback callback) {
@@ -206,7 +259,9 @@ public class JambulLefuPlugin {
         startJambulSession(model);
 
         ResultData result = new ResultData();
-        result.putValue("connected", true);
+        result.putValue("connected", false);
+        result.putValue("state", "discovered");
+        result.putValue("message", "Scale discovered; starting a Jambul connection session.");
         result.putValue("deviceName", model.getDeviceName());
         result.putValue("deviceAddress", model.getDeviceMac());
         notifyListeners("lefuDeviceInfo", result);
@@ -219,18 +274,37 @@ public class JambulLefuPlugin {
       @Override
       public void monitorBluetoothWorkState(PPBleWorkState state, PPDeviceModel deviceModel) {
         Log.d(TAG, "Scan state: " + state);
+        switch (state) {
+          case PPBleWorkStateSearching:
+            notifyScanState("searching", "Scanning for Jambul scales...");
+            break;
+          case PPBleWorkSearchTimeOut:
+            notifyScanState("timeout", "No scale was found before the scan timed out.");
+            break;
+          case PPBleWorkSearchFail:
+            notifyScanState("failed", "The Bluetooth scan failed.");
+            break;
+          case PPBleStateSearchCanceled:
+            notifyScanState("cancelled", "The Bluetooth scan was cancelled.");
+            break;
+          default:
+            notifyScanState("state", "Bluetooth scan state: " + state);
+            break;
+        }
       }
 
       @Override
       public void monitorBluetoothSwitchState(PPBleSwitchState sw) {
         if (sw == PPBleSwitchState.PPBleSwitchStateOff) {
           Log.e(TAG, "Bluetooth is OFF");
+          notifyScanState("failed", "Bluetooth is turned off.");
         }
       }
     });
 
     ResultData result = new ResultData();
     result.putValue("connected", false);
+    result.putValue("state", "searching");
     result.putValue("message", "Scanning started. Waiting for devices...");
     notifyListeners("lefuDeviceInfo", result);
     if (resolved.compareAndSet(false, true)) {

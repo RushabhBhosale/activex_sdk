@@ -63,7 +63,7 @@ public class DemoActivity extends Activity {
           : "Device connected: " + deviceName);
       }
     });
-    appendActivityLog("Demo ready");
+    appendActivityLog("Demo ready — only " + LefuPlugin.SUPPORTED_DEVICE_NAME + " is supported");
     requestRuntimePermissions();
   }
 
@@ -100,6 +100,8 @@ public class DemoActivity extends Activity {
     root.addView(header, headerParams);
 
     addActivityPanel(root);
+    addSectionTitle(root, "Supported scale");
+    addSupportedScaleLabel(root);
 
     addSectionTitle(root, "Patient profile");
     ageInput = addNumberInput(root, "Age", "30", false);
@@ -120,7 +122,7 @@ public class DemoActivity extends Activity {
       "Sync User", v -> syncActiveXUser(),
       "Start ActiveX Scan", v -> startActiveXScan());
     addButtonRow(root,
-      "Stop ActiveX Scan", v -> sdk.stopLefuScan(statusCallback("Scan stopped")),
+      "Stop ActiveX Scan", v -> stopActiveXScan(),
       "Start Measurement", v -> startActiveXMeasurement());
 
     return wrapInScrollView(root);
@@ -289,6 +291,19 @@ public class DemoActivity extends Activity {
     return params;
   }
 
+  private void addSupportedScaleLabel(LinearLayout root) {
+    TextView scale = new TextView(this);
+    scale.setText(LefuPlugin.SUPPORTED_DEVICE_NAME + " (Lefu Borre)");
+    scale.setTextSize(16);
+    scale.setTextColor(0xFF123B5D);
+    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+      LinearLayout.LayoutParams.MATCH_PARENT,
+      LinearLayout.LayoutParams.WRAP_CONTENT
+    );
+    params.topMargin = dp(8);
+    root.addView(scale, params);
+  }
+
   private EditText addNumberInput(LinearLayout root, String hint, String value, boolean decimal) {
     EditText input = new EditText(this);
     input.setHint(hint);
@@ -350,8 +365,7 @@ public class DemoActivity extends Activity {
       patientName,
       activeXSecret
     );
-    appendActivityLog("Waiting for SDKPOST response...");
-    appendActivityLog("Measurement started");
+    appendActivityLog("Starting " + LefuPlugin.SUPPORTED_DEVICE_NAME + " measurement; waiting for scale data...");
     sdk.startLefuMeasurement(this, input, new ResultCallback() {
       @Override
       public void onSuccess(ResultData data) {
@@ -395,8 +409,31 @@ public class DemoActivity extends Activity {
 
   private void handleSdkEvent(String eventName, ResultData data) {
     if ("lefuDeviceInfo".equals(eventName)) {
-      boolean connected = data != null && Boolean.TRUE.equals(data.get("connected"));
-      appendActivityLog(connected ? "Device found, connecting..." : "Scanning for a device...");
+      String state = valueOf(data, "state");
+      if ("discovered".equals(state)) {
+        appendActivityLog("Scale discovered: " + deviceDescription(data) + "; attempting connection.");
+      } else {
+        appendActivityLog("Scanning for a device...");
+      }
+      return;
+    }
+
+    if ("scanState".equals(eventName)) {
+      appendActivityLog("Scan " + valueOf(data, "state") + ": " + valueOf(data, "message"));
+      return;
+    }
+
+    if ("connectionState".equals(eventName)) {
+      String device = deviceDescription(data);
+      appendActivityLog(
+        "Connection " + valueOf(data, "state") + ": " + valueOf(data, "message")
+          + (device.isEmpty() ? "" : " [" + device + "]")
+      );
+      return;
+    }
+
+    if ("deviceDisconnected".equals(eventName)) {
+      appendActivityLog("Connection disconnected: " + valueOf(data, "message"));
       return;
     }
 
@@ -404,6 +441,9 @@ public class DemoActivity extends Activity {
 
     String event = data == null ? "" : String.valueOf(data.get("event"));
     switch (event) {
+      case "scaleState":
+        appendActivityLog("Scale state: " + valueOf(data, "state"));
+        break;
       case "measurementStarted":
         appendActivityLog("Measurement data started");
         break;
@@ -417,7 +457,13 @@ public class DemoActivity extends Activity {
         appendActivityLog("Measurement complete; waiting for SDKPOST");
         break;
       case "dataFailure":
-        appendActivityLog("Measurement data failed");
+        appendActivityLog("Measurement data failed: " + valueOf(data, "message"));
+        break;
+      case "measurementStop":
+        appendActivityLog("Measurement stopped because the scale disconnected");
+        break;
+      case "overWeight":
+        appendActivityLog("Scale reported an over-weight condition");
         break;
       case "measurementAuthorizationFailed":
         appendActivityLog("SDKPOST authorization failed");
@@ -425,6 +471,21 @@ public class DemoActivity extends Activity {
       default:
         break;
     }
+  }
+
+  private String valueOf(ResultData data, String key) {
+    if (data == null || data.get(key) == null) return "unknown";
+    return String.valueOf(data.get(key));
+  }
+
+  private String deviceDescription(ResultData data) {
+    if (data == null) return "";
+    Object name = data.get("deviceName");
+    Object address = data.get("deviceAddress");
+    if (name == null && address == null) return "";
+    if (name == null) return String.valueOf(address);
+    if (address == null) return String.valueOf(name);
+    return name + " (" + address + ")";
   }
 
   private void appendActivityLog(String message) {
@@ -494,8 +555,12 @@ public class DemoActivity extends Activity {
       return;
     }
 
-    appendActivityLog("Scanning for a device...");
+    appendActivityLog("Starting " + LefuPlugin.SUPPORTED_DEVICE_NAME + " scan...");
     sdk.startLefuScan(statusCallback("Scanning started"));
+  }
+
+  private void stopActiveXScan() {
+    sdk.stopLefuScan(statusCallback("Scan stopped"));
   }
 
   private void requestRuntimePermissions() {

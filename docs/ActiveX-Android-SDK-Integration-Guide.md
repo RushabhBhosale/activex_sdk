@@ -1,19 +1,19 @@
 # ActiveX Android SDK Integration Guide
 
 **Document version:** 1.0  
-**Last updated:** 23 July 2026  
+**Last updated:** 25 August 2026<br>
 **SDK artifact:** `app-release.aar`  
 **Primary package:** `com.iosx.activex`
 
 ## 1. Purpose
 
-This guide describes the complete process for integrating the ActiveX Android SDK into a client application that connects to supported Bluetooth body-composition scales and returns authorized body-composition measurements.
+This guide describes the complete process for integrating the ActiveX Android SDK into a client application that connects to the `CF650_BG` Bluetooth body-composition scale and returns authorized body-composition measurements.
 
-The current client integration exposes the Lefu hardware flow:
+The current client integration exposes one hardware flow:
 
-- **Lefu**: scale discovery, connection, user synchronization, and measurement.
+- **CF650_BG through Lefu Borre**: exact-name discovery, connection, user synchronization, and measurement.
 
-The Lefu flow is the recommended starting point and is the flow used by the standalone demo.
+The standalone demo and SDK facade intentionally use only this device. Other Lefu models, Ice Lefu, and Jambul flows are not supported by this build.
 
 ## 2. Integration flow
 
@@ -28,7 +28,7 @@ Request runtime Bluetooth/location permissions
         ↓
 Create ActiveXScaleSDK and register listeners
         ↓
-Initialize the selected hardware flow
+Initialize the Lefu Borre flow
         ↓
 Sync age, height, and sex
         ↓
@@ -50,7 +50,7 @@ Do not start a measurement before initialization, user synchronization, and devi
 - `compileSdk` 35 or higher.
 - Minimum Android API level 22 for the current SDK build.
 - Bluetooth Low Energy support.
-- A Lefu-compatible scale.
+- A `CF650_BG` Lefu Borre scale. Other advertised device names are ignored.
 - A valid ActiveX authorization secret.
 
 Bluetooth testing should be performed on a real device. An Android emulator cannot reliably reproduce scale discovery and connection behavior.
@@ -342,7 +342,7 @@ Start scanning after permissions, initialization, and user synchronization:
 activeXScaleSDK.startLefuScan(callback("startLefuScan"));
 ```
 
-The current Lefu implementation scans for up to five minutes and automatically starts a connection to the first unique scale it discovers.
+The current Lefu implementation scans for up to five minutes and automatically connects only when the advertised device name is exactly `CF650_BG`. All other BLE and Lefu advertisements are ignored.
 
 The scan callback may first return:
 
@@ -607,7 +607,7 @@ Generated AAR:
 android/app/build/outputs/aar/app-release.aar
 ```
 
-Copy the generated AAR into `demo/app-release.aar` before building the demo.
+Copy the generated AAR into `demo/activeXSdk.aar` before building the demo.
 
 ### Build the demo
 
@@ -645,14 +645,16 @@ Do not install `ActiveXScaleSDKDemo-release-unsigned.apk`. If an older demo sign
 | --- | --- |
 | `new ActiveXScaleSDK(Context)` | Creates the SDK facade. |
 | `setEventListener(LefuEventListener)` | Registers device and measurement event callbacks. |
-| `initializeLefu(ResultCallback)` | Initializes Lefu. |
-| `startLefuScan(ResultCallback)` | Starts Lefu discovery and automatic connection. |
+| `initializeLefu(ResultCallback)` | Initializes the `CF650_BG` Lefu Borre flow. |
+| `startLefuScan(ResultCallback)` | Scans for and automatically connects only to `CF650_BG`. |
 | `stopLefuScan(ResultCallback)` | Stops Lefu discovery. |
 | `checkLefuConnection(ResultCallback)` | Returns Lefu connection state. |
 | `getLefuDevices(ResultCallback)` | Returns devices discovered by Lefu. |
-| `connectLefuDevice(String, String, ResultCallback)` | Connects using device address and name. |
+| `connectLefuDevice(String, String, ResultCallback)` | Connects by address only when the supplied name is exactly `CF650_BG`. |
 | `syncLefuUserInfo(Integer, Double, String, ResultCallback)` | Sets the Lefu calculation profile. |
 | `startLefuMeasurement(Activity, MeasurementInput, ResultCallback)` | Starts an authorized Lefu measurement. |
+
+Legacy Ice Lefu and Jambul facade signatures remain present for source compatibility, but every such call reports `This SDK build only supports CF650_BG through the Lefu Borre flow.` They cannot initialize, scan, connect, or measure in this build.
 
 The overloads that omit `MeasurementInput` are retained for source compatibility, but the current measurement implementation requires authorization input. Use the overload that accepts `MeasurementInput`.
 
